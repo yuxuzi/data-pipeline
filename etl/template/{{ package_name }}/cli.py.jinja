@@ -1,0 +1,43 @@
+"""Typer command-line interface: a thin layer over ``pipeline``."""
+
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from {{ package_name }}.pipeline import ValidationError, run_pipeline
+
+app = typer.Typer(
+    help="{{ description }}.", no_args_is_help=True, add_completion=False
+)
+
+DEFAULT_INPUT = Path("data/sample.csv")
+DEFAULT_OUTPUT = Path("output/summary.parquet")
+
+
+@app.callback()
+def root() -> None:
+    """Run the pipeline. Use --help to list its commands."""
+
+
+@app.command("run")
+def run_command(
+    input_path: Annotated[Path, typer.Option("--input", help="CSV to read.")] = DEFAULT_INPUT,
+    output: Annotated[Path, typer.Option("--output", help="Parquet to write.")] = DEFAULT_OUTPUT,
+) -> None:
+    """Read the CSV, validate it, summarise it, and write Parquet."""
+    try:
+        written = run_pipeline(input_path, output)
+    except (FileNotFoundError, ValidationError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"wrote {written}")
+
+
+def main() -> None:
+    """Run the command-line interface."""
+    app()
+
+
+if __name__ == "__main__":
+    main()

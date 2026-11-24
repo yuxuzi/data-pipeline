@@ -1,0 +1,32 @@
+# {{ project_name }}
+
+{{ description }}.
+
+## Run
+
+```bash
+uv sync
+uv run {{ project_name }} run
+uv run {{ project_name }} run --input data/sample.csv --output output/summary.parquet
+uv run {{ project_name }} --help
+```
+
+The command reads `data/sample.csv`, checks it, and writes `output/summary.parquet`: revenue and
+units per region and product.
+
+## Check
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy {{ package_name }} tests
+uv run pytest
+```
+
+## Layout
+
+- `{{ package_name }}/pipeline.py`: extract, validate, transform (one Polars expression chain), and load as typed functions.
+- `{{ package_name }}/cli.py`: the Typer command; a thin layer over `pipeline`.
+- `tests/`: pytest; the pipeline runs on the sample, and each validation failure is tested.
+
+See `AGENTS.md` for the rules coding agents follow in this project.

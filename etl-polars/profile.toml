@@ -1,0 +1,17 @@
+contract = 1
+id = "etl-polars"
+name = "Polars pipeline"
+description = "The same extract, transform, validate, and load shape as the etl profile, with Polars expressions instead of DuckDB."
+version = "1"
+kind = "cli"
+status = "stable"
+supported_python = ["3.11", "3.12", "3.13", "3.14", "3.15"]
+default_components = []
+optional_components = []
+dependencies = ["typer>=0.12", "polars>=2.1.0"]
+questions = ["description", "author", "email", "python_version", "license"]
+lifecycle_commands = ["uv sync", "uv run ruff check .", "uv run ruff format --check .", "uv run mypy {package} tests", "uv run pytest"]
+security_posture = "Reads the CSV named by --input and writes the Parquet file named by --output, on the local disk only. It needs no credentials, network access, or services. Input is validated before anything is loaded: columns and types must match, required columns must have no nulls, quantities and prices must not be negative, and an empty file is refused. The checks do not scan dependencies or code for security problems, and they do not sandbox the process."
+
+[dependency_groups]
+dev = ["mypy>=1.11", "pytest>=8.0", "ruff>=0.6"]

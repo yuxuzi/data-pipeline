@@ -1,0 +1,35 @@
+"""Tests for the command-line interface, run in process with CliRunner."""
+
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+from {{ package_name }}.cli import app
+
+runner = CliRunner()
+SAMPLE = Path(__file__).resolve().parents[1] / "data" / "sample.csv"
+
+
+def test_run_writes_the_parquet_file(tmp_path: Path) -> None:
+    output = tmp_path / "summary.parquet"
+    result = runner.invoke(app, ["run", "--input", str(SAMPLE), "--output", str(output)])
+    assert result.exit_code == 0
+    assert output.is_file()
+    assert f"wrote {output}" in result.output
+
+
+def test_run_reports_a_validation_error_and_exits_1(tmp_path: Path) -> None:
+    source = tmp_path / "bad.csv"
+    source.write_text("order_id,region,product,quantity,unit_price\n1,,Widget,2,3.00\n")
+    result = runner.invoke(
+        app, ["run", "--input", str(source), "--output", str(tmp_path / "out.parquet")]
+    )
+    assert result.exit_code == 1
+    assert "column region has 1 null" in result.output
+    assert not (tmp_path / "out.parquet").exists()
+
+
+def test_help_lists_the_run_command() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "run" in result.output

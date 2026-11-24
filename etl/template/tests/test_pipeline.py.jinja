@@ -1,0 +1,84 @@
+"""Tests for the pipeline: the sample run end to end, and the validation failure path."""
+
+import csv
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+import duckdb
+import pytest
+
+from {{ package_name }}.pipeline import ValidationError, run_pipeline
+
+SAMPLE = Path(__file__).resolve().parents[1] / "data" / "sample.csv"
+HEADER = "order_id,region,product,quantity,unit_price"
+
+
+def _query(sql: str, params: list[Any]) -> tuple[Any, ...]:
+    rows = duckdb.connect().execute(sql, params).fetchall()
+    assert len(rows) == 1
+    return tuple(rows[0])
+
+
+def _expected_totals() -> tuple[int, Decimal]:
+    """Compute the sample's totals independently of DuckDB."""
+    units = 0
+    revenue = Decimal("0")
+    with SAMPLE.open(newline="", encoding="utf-8") as handle:
+        for line in csv.DictReader(handle):
+            units += int(line["quantity"])
+            revenue += Decimal(line["quantity"]) * Decimal(line["unit_price"])
+    return units, revenue.quantize(Decimal("0.01"))
+
+
+def _write_input(tmp_path: Path, *rows: str) -> Path:
+    path = tmp_path / "input.csv"
+    path.write_text("\n".join((HEADER, *rows)) + "\n", encoding="utf-8")
+    return path
+
+
+def test_sample_run_writes_totals_that_match_the_input(tmp_path: Path) -> None:
+    output = run_pipeline(SAMPLE, tmp_path / "nested" / "summary.parquet")
+    assert output.is_file()
+    units, revenue = _query("SELECT SUM(units), SUM(revenue) FROM read_parquet(?)", [str(output)])
+    assert (int(units), Decimal(str(revenue))) == _expected_totals()
+
+
+def test_sample_run_has_one_row_per_region_and_product(tmp_path: Path) -> None:
+    output = run_pipeline(SAMPLE, tmp_path / "summary.parquet")
+    distinct, total = _query(
+        "SELECT COUNT(DISTINCT (region, product)), COUNT(*) FROM read_parquet(?)", [str(output)]
+    )
+    assert distinct == total == 12
+
+
+def test_a_second_run_overwrites_the_output(tmp_path: Path) -> None:
+    output = tmp_path / "summary.parquet"
+    run_pipeline(SAMPLE, output)
+    run_pipeline(SAMPLE, output)
+    (count,) = _query("SELECT COUNT(*) FROM read_parquet(?)", [str(output)])
+    assert count == 12
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        pytest.param((), "no rows", id="header-only"),
+        pytest.param(("1,,Widget,2,3.00",), "column region has 1 null", id="null-region"),
+        pytest.param(("1,North,Widget,-2,3.00",), "is negative in 1 row", id="negative-quantity"),
+        pytest.param(("1,North,Widget,two,3.00",), "does not match", id="text-in-number"),
+    ],
+)
+def test_bad_input_fails_validation_before_anything_is_loaded(
+    tmp_path: Path, rows: tuple[str, ...], message: str
+) -> None:
+    source = _write_input(tmp_path, *rows)
+    output = tmp_path / "summary.parquet"
+    with pytest.raises(ValidationError, match=message):
+        run_pipeline(source, output)
+    assert not output.exists()
+
+
+def test_missing_input_file_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="input file not found"):
+        run_pipeline(tmp_path / "missing.csv", tmp_path / "summary.parquet")

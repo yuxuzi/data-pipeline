@@ -1,0 +1,46 @@
+# AGENTS.md
+
+Guidance for coding agents working in `{{ project_name }}`. `CLAUDE.md` imports this file.
+
+## Project
+
+{{ description }}. A typed Python {{ python_version }}+ package (`{{ package_name }}`) that runs extract, transform, validate, and load steps on a CSV and writes Parquet. Polars does the work, and a Typer command runs it. `uv` is the only required tool: never use pip, virtualenv activation, or make.
+
+## Commands
+
+- Install or refresh the environment: `uv sync`
+- Run the pipeline on the sample: `uv run {{ project_name }} run`
+- Run it on other files: `uv run {{ project_name }} run --input <csv> --output <parquet>`
+- Test: `uv run pytest`
+- Lint: `uv run ruff check .`
+- Format: `uv run ruff format .` (check only: `uv run ruff format --check .`)
+- Type-check: `uv run mypy {{ package_name }} tests`
+
+## Layout
+
+- `data/sample.csv`: the sample input, with five columns: order_id, region, product, quantity, unit_price.
+- `{{ package_name }}/pipeline.py`: the steps as plain typed functions (`extract`, `validate`, `transform`, `load`) and `run_pipeline`, which calls them in order.
+- `{{ package_name }}/cli.py`: the Typer command; a thin layer over `pipeline`.
+- `tests/`: pytest suite. It runs the pipeline on the sample, checks the totals against an independent sum, and tests each validation failure.
+- `output/`: generated Parquet; ignored by git.
+
+## Conventions
+
+- Keep each step a typed function that takes and returns values. Write transforms as Polars expressions.
+- Validate input before anything is loaded. A failed check raises `ValidationError` with a message that names the column or the check.
+- Add a check or a step with a test that covers its failure path.
+- Add runtime dependencies with `uv add <package>`; never edit `uv.lock` by hand.
+
+## Testing
+
+- Add or update tests with every behavior change, including the failure path.
+- Before reporting work as done, run the test, lint, format, and type-check commands above and report the real results.
+- Tests must run offline and must not touch real data outside `data/` and temporary folders.
+
+## Safety
+
+- The pipeline reads and writes local files only. It uses no network, credentials, or services.
+- Treat input data as untrusted. Keep the validation checks, and extend them rather than skipping them.
+- Never read, print, or commit `.env` files, tokens, or other secrets.
+- Do not change dependency version bounds without asking first.
+- Prefer small, reviewable diffs.
